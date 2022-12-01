@@ -30,5 +30,27 @@ object ElfCalories extends IOApp.Simple {
 }
 
 
+object TopThreeElves extends IOApp.Simple {
+  val fileName: String = "day1-in.txt"
+  val threeElves: IO[Unit] =
+    Files[IO].readUtf8Lines(Path(fileName))
+    // convert each line into an Option[Int]
+    .map(line => line.trim.toIntOption)
+    // Split stream into Chunks delimited by None (Each Chunk == 1 elf)
+    .split(_ == None)
+    // Sum the calories each elf is holding
+    .map((x => x.foldLeft(0)((acc, opt) => acc + opt.get)))
+    // Place all values into one chunk
+    .chunkAll
+    // map over the chunk, convert to a list, sort, reverse, take the first 3, and sum them
+    .map(_.toList.sorted.reverse.take(3).sum)
+    // Print the single element remaining in the stream
+    .foreach(Console[IO].println(_))
+    .compile.drain
+
+   def run: IO[Unit] = threeElves
+}
+
+
 
 
