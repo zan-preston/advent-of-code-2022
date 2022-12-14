@@ -34,14 +34,22 @@ object ConsoleStream extends IOApp.Simple {
     def pull(in: Stream[IO, Line], state: State): Pull[IO, DirSize, Unit] = {
       in.pull.uncons1.flatMap{
         case Some((line, rest)) => line match {
-          case _ => Pull.output1(DirSize("some item", 10)).flatMap(_ => pull(rest, state))
+          case CD("/") => pull(rest, State(List(DirSize("/", 0))))
+          case CD("..") => state.sizes match {
+            case current :: parent :: tail => Pull.output1(current).flatMap(_ => pull(rest, State(parent.copy(size = parent.size + current.size) +: tail)))
+          }
+          case CD(name) => pull(rest, State(DirSize(name, 0) +: state.sizes))
+          case File(size, _) => state.sizes match {
+            case current :: tail => pull(rest, State(DirSize(current.name, current.size + size) +: tail))
+          }
+          case _ => pull(rest, state)
         }
-        case None => Pull.done
+        case None => state.sizes match {
+          case current :: parent :: tail => Pull.output1(current).flatMap(_ => pull(Stream.empty, State(parent.copy(size = parent.size + current.size) +: tail)))
+          case current :: Nil => Pull.output1(current).flatMap(_=> Pull.done)
+          case Nil => Pull.done
+        }
       }
-      // for { 
-      //
-      //   // _ <- Pull.output1(DirSize("", 10))
-      // } yield ()
     }
 
     pull(in, State(List(DirSize("", 0)))).stream
@@ -50,26 +58,17 @@ object ConsoleStream extends IOApp.Simple {
 
 
   // val fileName: String = "day7-in.txt"
-  val fileName: String = "day7-in-sample.txt"
-  val console: IO[Unit] = 
+  val fileName: String = "day7-in.txt"
+  val result: IO[Int] = 
     Files[IO].readUtf8Lines(Path(fileName))
     .filter(_.nonEmpty)
     .map(parse)
     .through(dirInterpreter)
-    // .scan(State(List(DirSize("", 0))))((state, line: Line) => line match {
-    //   case CD("/") => State(List(DirSize("", 0)))
-    //   case CD("..") => state.sizes match {
-    //     case current :: parent :: rest => State(parent.copy(size = parent.size + current.size) +: rest)
-    //   }
-    //   case CD(name) => State(DirSize(name, 0) +: state.sizes)
-    //   case File(size, _) => state.sizes match {
-    //     case current :: rest => State(DirSize(current.name, current.size + size) +: rest)
-    //   }
-    //   case _ => state
-    // } )
-    .foreach(Console[IO].println(_))
-    .compile.drain
+    .filter(_.size <= 100000)
+    .foldMap(_.size) // same as .fold(0){(acc, in) => acc + in.size}
+    // .foreach(Console[IO].println(_))
+    .compile.lastOrError
 
-  def run: IO[Unit] = console
+  def run: IO[Unit] = result.flatMap(Console[IO].println(_))
 }
 
